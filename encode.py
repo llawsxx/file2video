@@ -1,44 +1,27 @@
-from itertools import islice
 import os
 import sys
 import math
 import json
-from multiprocessing import Pool, cpu_count
 import av
 from tqdm import tqdm
 from reedsolo import RSCodec
-from v2.v2 import encode_to_image
+from v3 import encode_to_image
 
 from checksum import checksum
 
 from common import *
 
-frame_rate = 20.0
-width_height = 1080
+rs = RSCodec(nsym = global_reedEC, nsize = global_reedN)
 
-
-rs = None
-grid_size = None
-
-def read_in_chunks(file_object, chunk_size=1024):
-    """Generator to read a file piece by piece."""
-    while True:
-        data = file_object.read(chunk_size)
-        if not data:
-            break
-        yield data
-
-
-def process_chunk(data):
+def process_chunk(data,index):
     """Encode data chunk into BitCode and return as image."""
     data_encoded = rs.encode(data)
-    length = len(data_encoded)
+    length_byte = len(data_encoded).to_bytes(4,'little')
+    index_byte = index.to_bytes(4,'little')
+    num_encoded = rs.encode(index_byte + length_byte)
+    data = num_encoded + data_encoded
 
-    length_encoded = rs.encode(length.to_bytes(4,'big'))
-
-    data = length_encoded + data_encoded
-
-    return encode_to_image(data, grid_size, width_height)
+    return encode_to_image(data, grid_size, pixel_size)
 
 def encode_and_write_frames(frames, stream, container):
     """Encode frames and write to video container."""
@@ -47,15 +30,8 @@ def encode_and_write_frames(frames, stream, container):
         for packet in stream.encode(video_frame):
             container.mux(packet)
 
-def create_video(src, dest, reedEC, grid_size, read_file_lazy = False):
+def create_video(src, dest, chunk_size):
     """Create video from source file using PyAV."""
-
-    globals()['grid_size'] = grid_size
-    globals()['rs'] = RSCodec(nsym = reedEC, nsize = global_reedN)
-
-    reedK = global_reedN - reedEC
-
-    chunk_size = (reedK * ((grid_size*grid_size) // (global_reedN * 8))) - (4 + reedEC)
 
     md5_checksum = checksum(src)
     file_stats = os.stat(src)
@@ -69,21 +45,21 @@ def create_video(src, dest, reedEC, grid_size, read_file_lazy = False):
         "Filename": os.path.basename(src),
         "ChunkCount": chunk_count,
         "Filehash": md5_checksum,
-        "ConverterUrl": "https://github.com/karaketir16/file2video/tree/v2",
-        "ConverterVersion": "python_v2",
-        "FileSize:": file_size
+        "ConverterUrl": "https://github.com/llawsxx/file2video",
+        "ConverterVersion": "python_v3",
+        "FileSize": file_size
     }
 
     first_frame_data = json.dumps(meta_data, indent=4)
-    first_frame = process_chunk(first_frame_data.encode('utf-8'))
+    first_frame = process_chunk(first_frame_data.encode('utf-8'),0)
 
     # Open output file
     container = av.open(dest, mode='w')
     stream = container.add_stream('h264', rate=frame_rate)
-    stream.width = width_height
-    stream.height = width_height
+    stream.width = grid_size[1] * pixel_size
+    stream.height = grid_size[0] * pixel_size
     stream.pix_fmt = 'yuv420p'
-    stream.options = {'crf': '40'}
+    stream.options = {'crf': '10'}
 
     # Write the first frame
     video_frame = av.VideoFrame.from_ndarray(first_frame, format='rgb24')
@@ -91,30 +67,16 @@ def create_video(src, dest, reedEC, grid_size, read_file_lazy = False):
         container.mux(packet)
 
     # Process chunks in batches using multiprocessing
-    with open(src, 'rb') as f, Pool(cpu_count()) as pool:
-        entire_file = []
-        if not read_file_lazy:
-            entire_file = f.read()
-        i = 0
+    with open(src, 'rb') as f:
+        i = 1
         while True:
-
-            chunks = []
-
-            if read_file_lazy:
-                chunks = list(islice(read_in_chunks(f, chunk_size), cpu_count()))
-            else:
-                for _ in range(cpu_count()):
-                    chunks.append(entire_file[i: i + chunk_size])
-                    if not chunks[-1]: #empty
-                        chunks.pop()
-                        break
-                    i = i + chunk_size
-            if not chunks:
+            chunk = f.read(chunk_size)
+            if len(chunk) == 0:
                 break
-
-            frames = pool.map(process_chunk, chunks)
-            encode_and_write_frames(frames, stream, container)
-            pbar.update(len(frames))
+            frame = process_chunk(chunk,i)
+            encode_and_write_frames([frame], stream, container)
+            pbar.update(1)
+            i+=1
 
     pbar.close()
 
@@ -129,4 +91,4 @@ if __name__ == '__main__':
         sys.exit(1)
     src = sys.argv[1]
     dest = sys.argv[2]
-    create_video(src, dest, global_reedEC, global_gridSize)
+    create_video(src, dest)

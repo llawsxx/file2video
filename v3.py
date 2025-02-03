@@ -13,13 +13,13 @@ def setBit(data, bit_index):
     bit_position = bit_index % 8
     data[byte_index] |= (1 << bit_position)
 
-def create_custom_code(data, grid_size=256):
+def create_custom_code(data, grid_size):
     """Create a custom encoded image from data."""
-    grid = np.zeros((grid_size, grid_size), dtype=np.uint8)
+    grid = np.zeros(grid_size, dtype=np.uint8)
     bit_length = len(data) * 8
     bit_index = 0
-    for i in range(grid_size):
-        for j in range(grid_size):
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
             if bit_index >= bit_length:
                 return grid
             if getBit(data, bit_index):
@@ -27,24 +27,23 @@ def create_custom_code(data, grid_size=256):
             bit_index += 1
     return grid
 
-def encode_to_image(data, grid_size=256, resolution = 1080):
+def encode_to_image(data, grid_size, pixel_size = 2):
     """Encode data into a binary grid and save as an image."""
     grid = create_custom_code(data, grid_size)
     img = Image.fromarray(np.stack([grid]*3, axis=-1), 'RGB')
-    return np.array(img.resize((resolution, resolution), Image.Resampling.NEAREST))
+    return np.array(img.resize((grid_size[1] * pixel_size, grid_size[0] * pixel_size), Image.Resampling.NEAREST))
 
-def decode_from_image(img, grid_size=256):
+def decode_from_image(img, grid_size):
     """Decode binary data from an image file."""
     img = Image.fromarray(img)
     img = img.convert('L')
-    img = img.resize((grid_size, grid_size), Image.Resampling.BOX)
-
+    img = img.resize((grid_size[1], grid_size[0]), Image.Resampling.BOX)
     grid = np.array(img)
-    data = bytearray(grid_size * grid_size // 8)
+    data = bytearray(grid_size[0] * grid_size[1] // 8)
 
     bit_index = 0
-    for i in range(grid_size):
-        for j in range(grid_size):
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
             if grid[i, j] > 128:
                 setBit(data, bit_index)
             bit_index += 1
@@ -57,14 +56,14 @@ def example():
     data = test_string.encode()
 
     # Encode to image
-    img = encode_to_image(data, grid_size=20)  # Use a smaller grid for visualization
+    img = encode_to_image(data, grid_size=(480,270))  # Use a smaller grid for visualization
 
     # Decode from image
-    decoded_data = decode_from_image(img, grid_size=20)
+    decoded_data = decode_from_image(img, grid_size=(480,270))
     decoded_string = decoded_data.decode("utf-8", errors="ignore")
 
-    # Display results
-    img.show()
+    # # Display results
+    # img.show()
     print("Decoded String:", decoded_string)
 
 if __name__ == "__main__":

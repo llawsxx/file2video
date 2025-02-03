@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
 RUN pip install uv
 
 # Clone the repository
-RUN git clone --depth 1 --branch master https://github.com/karaketir16/file2video.git /app
+RUN git clone --depth 1 --branch master https://github.com/llawsxx/file2video.git /app
 
 # Copy the current directory contents into the container at /app
 #COPY . /app
