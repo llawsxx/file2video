@@ -15,17 +15,13 @@ def setBit(data, bit_index):
 
 def create_custom_code(data, grid_size):
     """Create a custom encoded image from data."""
-    grid = np.zeros(grid_size, dtype=np.uint8)
-    bit_length = len(data) * 8
-    bit_index = 0
-    for i in range(grid_size[0]):
-        for j in range(grid_size[1]):
-            if bit_index >= bit_length:
-                return grid
-            if getBit(data, bit_index):
-                grid[i, j] = 255
-            bit_index += 1
-    return grid
+    bits2byte = np.unpackbits(data,axis=-1,bitorder="little") * 255
+    pad_width = grid_size[0] * grid_size[1] - len(bits2byte)
+    if pad_width > 0:
+        bitmap = np.pad(bits2byte,((0, pad_width),),'constant')
+    else:
+        bitmap = bits2byte
+    return bitmap.reshape(grid_size)
 
 def encode_to_image(data, grid_size, pixel_size = 2):
     """Encode data into a binary grid and save as an image."""
@@ -39,15 +35,8 @@ def decode_from_image(img, grid_size):
     img = img.convert('L')
     img = img.resize((grid_size[1], grid_size[0]), Image.Resampling.BOX)
     grid = np.array(img)
-    data = bytearray(grid_size[0] * grid_size[1] // 8)
-
-    bit_index = 0
-    for i in range(grid_size[0]):
-        for j in range(grid_size[1]):
-            if grid[i, j] > 128:
-                setBit(data, bit_index)
-            bit_index += 1
-
+    grid = grid > 128
+    data = np.packbits(grid.reshape(grid_size[0] * grid_size[1]), axis=-1, bitorder='little')
     return data
 
 def example():

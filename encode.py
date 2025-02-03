@@ -66,7 +66,7 @@ def create_video(src, dest, chunk_size):
     for packet in stream.encode(video_frame):
         container.mux(packet)
 
-    # Process chunks in batches using multiprocessing
+    # Process chunks
     with open(src, 'rb') as f:
         i = 1
         while True:
